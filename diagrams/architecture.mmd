@@ -1,0 +1,13 @@
+flowchart TD
+    A[User input in Streamlit app.py] --> B[validation.make_task: check time, frequency, description]
+    B -->|invalid| C[ValueError shown as st.warning and logged]
+    B -->|valid| D[Pet.add_task]
+    D --> E[Owner holds pets and their tasks]
+    E --> F[Scheduler: sort_by_time, filter_tasks, detect_conflicts, mark_task_complete]
+    F --> G[Sorted schedule, conflict warnings, recurring tasks shown in UI]
+    B --> H[pawpal.log]
+    F --> H
+    I[evaluate.py harness] -->|calls| B
+    I -->|calls| F
+    I --> J[logs/evaluation_report.md pass/fail table]
+    J --> K[Human review in README and model_card.md]
