@@ -1,3 +1,118 @@
+# Applied AI System: PawPal+ with a Reliability Layer
+
+## Base project
+Original project: **PawPal+** (Module 2). It was a pet care scheduling app built with
+Python OOP (`Task`, `Pet`, `Owner`, `Scheduler`) and a Streamlit UI. It sorted tasks by
+time, filtered by pet and status, warned about scheduling conflicts, and created
+recurring daily and weekly tasks.
+
+## What this adds
+- `validation.py`: guardrails that reject bad times, frequencies, and descriptions, and
+  log accepted and rejected input to `pawpal.log`. The Streamlit app uses it for every
+  new task, so bad input becomes a warning instead of bad data.
+- `evaluate.py`: a harness that runs 20 predefined checks (including 40 seeded random
+  tasks across two pets) and writes a pass/fail table to `logs/evaluation_report.md`.
+- `test_guardrails.py`: 5 pytest tests for the guardrails.
+
+## Architecture
+The diagram is in `diagrams/architecture.mmd`. User input goes through
+`validation.make_task`, which either rejects it (a warning shown and logged) or builds a
+`Task` that is added to a `Pet`. The `Scheduler` then sorts, filters, detects conflicts,
+and handles recurrence across all pets. `evaluate.py` drives the same validation and
+scheduler code and writes a pass/fail report for human review.
+
+## Setup
+```
+python -m pip install -r requirements.txt
+python main.py
+python evaluate.py
+python -m pytest
+python -m streamlit run app.py
+```
+
+## Sample interactions
+
+CLI demo:
+```
+$ python main.py
+
+Today's Schedule (sorted by time)
+---------------------------------
+  [ ] 08:00  Buddy  Breakfast (daily, 2026-11-22)
+  [ ] 08:00  Mimi   Medication (once, 2026-11-22)
+  [ ] 13:30  Mimi   Vet appointment (once, 2026-11-22)
+  [ ] 18:00  Buddy  Evening walk (daily, 2026-11-22)
+
+Conflict check
+--------------
+  WARNING: conflict on 2026-11-22 at 08:00 -> Buddy: Breakfast, Mimi: Medication
+
+Filter: Mimi's tasks
+--------------------
+  [ ] 08:00  Mimi   Medication (once, 2026-11-22)
+  [ ] 13:30  Mimi   Vet appointment (once, 2026-11-22)
+
+Completing 'Breakfast' (daily) ...
+  Next occurrence created for 2026-11-23 at 08:00
+
+Filter: completed tasks
+-----------------------
+  [x] 08:00  Buddy  Breakfast (daily, 2026-11-22)
+
+Filter: Buddy's pending tasks
+-----------------------------
+  [ ] 18:00  Buddy  Evening walk (daily, 2026-11-22)
+  [ ] 08:00  Buddy  Breakfast (daily, 2026-11-23)
+```
+
+Evaluation harness (guardrails and scheduler):
+```
+$ python evaluate.py
+[PASS] time '25:00' rejected: expected 'rejected', got 'rejected'
+[PASS] time '9:5' rejected: expected 'rejected', got 'rejected'
+[PASS] description '' (len 0) rejected: expected 'rejected', got 'rejected'
+[PASS] frequency 'hourly' rejected: expected 'rejected', got 'rejected'
+[PASS] time '09:05' accepted: expected 'accepted', got 'accepted'
+[PASS] 40 random tasks across 2 pets sort chronologically: expected True, got True
+[PASS] one cross-pet conflict detected: expected 1, got 1
+[PASS] daily task recurs 1 day later: expected 1, got 1
+[PASS] one-time task does not recur: expected None, got None
+...
+Summary: 20/20 checks passed
+```
+(The full list of 20 checks is in `logs/evaluation_report.md`.)
+
+Live app log (`pawpal.log`), from adding one valid task and one empty one in the Streamlit app:
+```
+2026-11-22 22:10:03,934 INFO Created task 'Fetching a stick' at 00:45 (once)
+2026-11-22 22:10:20,390 WARNING Rejected task '' at '22:09': Description cannot be empty.
+```
+
+## Guardrail examples
+| Input | Behavior | Result |
+|---|---|---|
+| Time `25:00` | rejected | `Time must be HH:MM in 24-hour format, got '25:00'.` |
+| Time `9:5` | rejected | `Time must be HH:MM in 24-hour format, got '9:5'.` |
+| Empty description | rejected | `Description cannot be empty.` |
+| 200-character description | rejected | `Description must be 80 characters or fewer.` |
+| Frequency `hourly` | rejected | `Frequency must be one of ('once', 'daily', 'weekly'), got 'hourly'.` |
+| Two tasks at 08:00 | conflict warning, no crash | `WARNING: conflict on ...` from `detect_conflicts()` |
+
+## Design decisions
+Validation lives in its own module so the UI, the tests, and the harness share the same
+rules and I didn't have to change the original core classes. Conflicts return warnings
+instead of raising errors. Trade-off: only exact time matches are flagged, not
+overlapping durations.
+
+## Testing summary
+`python evaluate.py`: 20/20 checks passed. `python -m pytest`: 14 passed (9 original
+PawPal+ tests plus 5 guardrail tests). The live app logged both an accepted and a
+rejected task.
+
+## Reflection
+This project showed me that a feature isn't done when it works once. Writing the
+harness forced me to define what "correct" means for bad input, not just good input.
+
 # 🐾 PawPal+
 
 PawPal+ is a pet care scheduling app. Owners add pets, schedule care tasks (feedings, walks, medications, appointments), and get a sorted schedule with conflict warnings and automatic recurring tasks.
@@ -97,7 +212,16 @@ Tests (in `tests/test_pawpal.py`) cover:
 Test output:
 
 ```
-PASTE YOUR python -m pytest OUTPUT HERE
+=================================================== test session starts ====================================================
+platform win32 -- Python 3.14.2, pytest-9.1.1, pluggy-1.6.0
+rootdir: C:\Users\rleyv\applied-ai-system\applied-ai-system-final
+plugins: anyio-4.15.1
+collected 14 items                                                                                                          
+
+test_guardrails.py .....                                                                                              [ 35%]
+test_pawpal.py .........                                                                                              [100%]
+
+==================================================== 14 passed in 0.16s ====================================================
 ```
 
 **Confidence Level:** ⭐⭐⭐⭐ (4/5). Core behaviors and key edge cases pass; overlapping durations and time-zone handling are not covered.
