@@ -1,5 +1,12 @@
+import logging
+
 import streamlit as st
 from pawpal_system import Owner, Pet, Task, Scheduler
+from validation import make_task
+
+logging.basicConfig(filename="pawpal.log", level=logging.INFO,
+                    format="%(asctime)s %(levelname)s %(message)s")
+logger = logging.getLogger("pawpal")
 
 st.set_page_config(page_title="PawPal+", page_icon="🐾")
 st.title("🐾 PawPal+")
@@ -36,13 +43,12 @@ else:
         when = st.time_input("Time")
         frequency = st.selectbox("Frequency", ["once", "daily", "weekly"])
         if st.form_submit_button("Add task"):
-            if not description.strip():
-                st.warning("Please enter a description.")
-            else:
-                owner.get_pet(target).add_task(
-                    Task(description.strip(), when.strftime("%H:%M"), frequency)
-                )
+            try:
+                task = make_task(description, when.strftime("%H:%M"), frequency)
+                owner.get_pet(target).add_task(task)
                 st.success(f"Task added for {target}.")
+            except ValueError as err:
+                st.warning(str(err))
 
 st.subheader("Schedule")
 conflicts = scheduler.detect_conflicts()
@@ -72,6 +78,7 @@ else:
     for i, t in enumerate(tasks):
         if not t.completed and st.button(f"✔ {t.pet_name}: {t.description} ({t.time}, {t.due_date})", key=f"done_{i}"):
             nxt = scheduler.mark_task_complete(t)
+            logger.info("Completed %r for %s", t.description, t.pet_name)
             if nxt:
                 st.session_state["msg"] = f"Next {nxt.frequency} task scheduled for {nxt.due_date}."
             st.rerun()
